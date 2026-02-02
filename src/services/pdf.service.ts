@@ -16,40 +16,75 @@ export async function htmlToPdf(
     const b = await getBrowser();
     const page = await b.newPage();
 
-    // crisp canvas
-    await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 2 });
+    try {
+        // crisp canvas
+        await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 2 });
 
-    // helpful logs
-    page.on("console", (m) => console.log("[console]", m.type(), m.text()));
-    page.on("pageerror", (e) => console.error("[pageerror]", e));
-    page.on("requestfailed", (r) =>
-        console.error("[requestfailed]", r.url(), r.failure()?.errorText)
-    );
+        // Timeout de seguridad para evitar que peticiones pesadas cuelguen el servicio
+        await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 20000 });
 
-    // load the HTML you send (with your own <script src="...">)
-    // await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
-    await page.setContent(html, { waitUntil: "domcontentloaded"});
+        // 2. Ejecuta una detección rápida: ¿Este HTML realmente necesita esperar por charts?
+        const needsCharts = await page.evaluate(() => {
+            // Buscamos si el usuario incluyó la marca de que usará el flag
+            return !!document.querySelector('[data-pdf-wait="charts"]');
+        });
 
-    // OPTIONAL: wait for a known chart canvas if you always use one id
-    // await page.waitForSelector("#kpiChart", { timeout: 15_000 }).catch(() => {});
+        if (needsCharts) {
+            console.log("Esperando flag de charts...");
+            await page.waitForFunction("window.__chartsReady === true", { 
+                timeout: 10000 // Baja esto a 10s máximo.
+            }).catch(() => console.log("WARN: Timeout charts."));
+        } else {
+            // 3. Si no necesita charts, espera solo a que las imágenes se carguen (opcional pero recomendado)
+            // Esto es mucho más rápido que networkidle0
+            await page.evaluate(async () => {
+                const selectors = Array.from(document.querySelectorAll("img"));
+                await Promise.all(selectors.map(img => {
+                    if (img.complete) return;
+                    return new Promise((resolve) => {
+                        img.onload = img.onerror = resolve;
+                    });
+                }));
+            }).catch(() => {});
+        }
 
-    // REQUIRED: wait for YOUR ready flag (set it in your HTML after charts render)
-    // await page
-    //     .waitForFunction("window.__chartsReady === true", { timeout: 220_000 })
-    //     .catch(() => {});
-    await page
-        .waitForFunction("window.__chartsReady === true")
-        .catch(() => {});
+        const bytes = await page.pdf({
+            format: "A4",
+            printBackground: true,
+            preferCSSPageSize: true,
+            ...options,
+        });
 
-    const bytes = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        preferCSSPageSize: true,
-        ...options,
-    });
+        return Buffer.from(bytes);
+    
+        // helpful logs
+        // page.on("console", (m) => console.log("[console]", m.type(), m.text()));
+        // page.on("pageerror", (e) => console.error("[pageerror]", e));
+        // page.on("requestfailed", (r) =>
+        //     console.error("[requestfailed]", r.url(), r.failure()?.errorText)
+        // );
+    
+        // await page.setContent(html, { waitUntil: "domcontentloaded"});
+    
+        // await page
+        //     .waitForFunction("window.__chartsReady === true")
+        //     .catch(() => {});
+    
+        // const bytes = await page.pdf({
+        //     format: "A4",
+        //     printBackground: true,
+        //     preferCSSPageSize: true,
+        //     ...options,
+        // });
+    
+        // await page.close();
+        // return Buffer.from(bytes);
+    } catch (error) {
+        throw error;
+    } finally {
+        await page.close(); // Garantiza el cierre incluso si hay error
+    }
 
-    await page.close();
-    return Buffer.from(bytes);
 }
 
 // export async function htmlToPdf(

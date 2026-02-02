@@ -7,10 +7,16 @@ export async function getBrowser(): Promise<Browser> {
         browser = await puppeteer.launch({
         headless: true,
         args: [
+            // "--no-sandbox",
+            // "--disable-setuid-sandbox",
+            // "--disable-dev-shm-usage",
+            // "--font-render-hinting=medium",
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--font-render-hinting=medium",
+            "--disable-dev-shm-usage", // Crucial para Docker/Linux con peticiones pesadas
+            "--disable-gpu",
+            "--disable-extensions",
+            "--no-zygote",
         ],
         });
     }

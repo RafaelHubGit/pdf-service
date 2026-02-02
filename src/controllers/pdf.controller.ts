@@ -31,6 +31,7 @@ export const createPdfBase64: RequestHandler = async (req, res, next) => {
         }
 
         const base64 = pdf.toString("base64");
+        
         res.json({ 
             ok: true,
             pdfBase64: base64 
