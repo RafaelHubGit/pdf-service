@@ -17,11 +17,31 @@ export async function htmlToPdf(
     const page = await b.newPage();
 
     try {
+        // Desactivar animaciones CSS y transiciones para rapidez
+        await page.emulateMediaType('screen');
+
+        // Interceptar peticiones innecesarias
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            const resourceType = req.resourceType();
+            if (['image', 'font'].includes(resourceType)) {
+                req.continue();
+            } else if (['stylesheet', 'document', 'script'].includes(resourceType)) {
+                req.continue();
+            } else {
+                req.abort(); // Bloquea medios pesados o trackers
+            }
+        });
+
         // crisp canvas
         await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 2 });
 
         // Timeout de seguridad para evitar que peticiones pesadas cuelguen el servicio
-        await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 20000 });
+        // await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.setContent(html, { waitUntil: "load", timeout: 60000 });
+
+        // Esperar a que las fuentes estén listas (evita errores de layout)
+        await page.evaluateHandle('document.fonts.ready');
 
         // 2. Ejecuta una detección rápida: ¿Este HTML realmente necesita esperar por charts?
         const needsCharts = await page.evaluate(() => {
@@ -52,33 +72,19 @@ export async function htmlToPdf(
             format: "A4",
             printBackground: true,
             preferCSSPageSize: true,
+            displayHeaderFooter: options.displayHeaderFooter ?? false,
+            headerTemplate: options.headerTemplate ?? '<div></div>',
+            footerTemplate: options.footerTemplate ?? '<div style="font-size:10px; margin: 0 auto;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>',
+            margin: options.margin || {
+                top: '20mm',    // Requerido para ver el header
+                bottom: '20mm', // Requerido para ver el footer
+                left: '10mm',
+                right: '10mm'
+            },
             ...options,
         });
 
         return Buffer.from(bytes);
-    
-        // helpful logs
-        // page.on("console", (m) => console.log("[console]", m.type(), m.text()));
-        // page.on("pageerror", (e) => console.error("[pageerror]", e));
-        // page.on("requestfailed", (r) =>
-        //     console.error("[requestfailed]", r.url(), r.failure()?.errorText)
-        // );
-    
-        // await page.setContent(html, { waitUntil: "domcontentloaded"});
-    
-        // await page
-        //     .waitForFunction("window.__chartsReady === true")
-        //     .catch(() => {});
-    
-        // const bytes = await page.pdf({
-        //     format: "A4",
-        //     printBackground: true,
-        //     preferCSSPageSize: true,
-        //     ...options,
-        // });
-    
-        // await page.close();
-        // return Buffer.from(bytes);
     } catch (error) {
         throw error;
     } finally {
@@ -86,47 +92,3 @@ export async function htmlToPdf(
     }
 
 }
-
-// export async function htmlToPdf(
-//     html: string,
-//     options: PDFOptions = {}
-// ): Promise<Buffer> {
-//     const b = await getBrowser();
-//     const page = await b.newPage();
-
-//     // crisp canvas rendering
-//     await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 2 });
-
-//     page.on("console", (msg) => console.log("[console]", msg.type(), msg.text()));
-//     page.on("pageerror", (err) => console.error("[pageerror]", err));
-//     page.on("requestfailed", req => console.error("[requestfailed]", req.url(), req.failure()?.errorText));
-
-
-//     // generous timeouts
-//     page.setDefaultTimeout(60_000);
-//     page.setDefaultNavigationTimeout(60_000);
-
-
-//     // Use "load" instead of "networkidle0" to avoid hanging on CDN connections
-//     await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
-
-//     // Wait for your chart canvas to exist
-//     await page.waitForSelector("#kpiChart", { timeout: 15_000 }).catch(() => {});
-
-//     // Wait for web fonts (so chart measures text correctly)
-//     await page.evaluate(() => (document as any).fonts?.ready ?? Promise.resolve());
-//     await page.waitForFunction("document.fonts ? document.fonts.status === 'loaded' : true", { timeout: 10_000 }).catch(() => {});
-
-//     // If your HTML sets window.__chartsReady = true when Chart finishes:
-//     await page.waitForFunction("window.__chartsReady === true", { timeout: 10_000 }).catch(() => {});
-
-//     const bytes = await page.pdf({
-//         format: "A4",
-//         printBackground: true,
-//         preferCSSPageSize: true,
-//         ...options,
-//     });
-
-//     await page.close();
-//     return Buffer.from(bytes);
-// }

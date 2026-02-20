@@ -13,10 +13,10 @@ export const PdfRequestSchema = z.object({
         headerTemplate: z.string().optional(),
         footerTemplate: z.string().optional(),
         margin: z.object({
-        top: z.union([z.string(), z.number()]).optional(),
-        right: z.union([z.string(), z.number()]).optional(),
-        bottom: z.union([z.string(), z.number()]).optional(),
-        left: z.union([z.string(), z.number()]).optional(),
+            top: z.union([z.string(), z.number()]).optional(),
+            right: z.union([z.string(), z.number()]).optional(),
+            bottom: z.union([z.string(), z.number()]).optional(),
+            left: z.union([z.string(), z.number()]).optional(),
         }).partial().optional(),
     }).partial().optional(),
 });
