@@ -1,17 +1,22 @@
-import type { PDFOptions } from "puppeteer";
+// import type { PDFOptions } from "puppeteer";
 import PQueue from "p-queue";
 import { getBrowser } from "./browser.js";
+import { PdfRequest } from "../validation/pdf.schema.js";
 
 
 export const pdfQueue = new PQueue({ concurrency: Number(process.env.MAX_CONCURRENCY ?? 4) });
 
-export async function generatePdf(html: string, options: PDFOptions = {}) {
+export async function generatePdf(
+    html: string, 
+    options: NonNullable<PdfRequest['pdfOptions']> = {}
+    // options: PDFOptions = {}
+) {
     return pdfQueue.add(() => htmlToPdf(html, options));
 }
 
 export async function htmlToPdf(
     html: string,
-    options: PDFOptions = {}
+    options: NonNullable<PdfRequest['pdfOptions']> = {}
 ): Promise<Buffer> {
     const b = await getBrowser();
     const page = await b.newPage();
@@ -68,21 +73,48 @@ export async function htmlToPdf(
             }).catch(() => {});
         }
 
-        const bytes = await page.pdf({
-            format: "A4",
+        const { width, height, unit = "mm", format, ...restOptions } = options;
+
+        // Helper para normalizar la unidad
+        const normalize = (val: string | number | undefined) => {
+            if (val === undefined) return undefined;
+            // Si es número, le pegamos la unidad (mm por defecto)
+            if (typeof val === "number") return `${val}${unit}`;
+            // Si es string y no tiene unidad, le pegamos la unidad
+            if (!/[a-z]+$/i.test(val)) return `${val}${unit}`;
+            return val;
+        };
+
+        const finalOptions: any = {
             printBackground: true,
             preferCSSPageSize: true,
             displayHeaderFooter: options.displayHeaderFooter ?? false,
             headerTemplate: options.headerTemplate ?? '<div></div>',
-            footerTemplate: options.footerTemplate ?? '<div style="font-size:10px; margin: 0 auto;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>',
-            margin: options.margin || {
-                top: '20mm',    // Requerido para ver el header
-                bottom: '20mm', // Requerido para ver el footer
-                left: '10mm',
-                right: '10mm'
-            },
-            ...options,
-        });
+            footerTemplate: options.footerTemplate ?? '<div></div>',
+            ...restOptions,
+            // Si hay dimensiones, el formato DEBE ser undefined para que Puppeteer no se confunda
+            width: normalize(width),
+            height: normalize(height),
+            format: (width || height) ? undefined : (format || "A4"),
+        };
+
+        const bytes = await page.pdf(finalOptions);
+
+        // const bytes = await page.pdf({
+        //     format: "A4",
+        //     printBackground: true,
+        //     preferCSSPageSize: true,
+        //     displayHeaderFooter: options.displayHeaderFooter ?? false,
+        //     headerTemplate: options.headerTemplate ?? '<div></div>',
+        //     footerTemplate: options.footerTemplate ?? '<div style="font-size:10px; margin: 0 auto;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>',
+        //     margin: options.margin || {
+        //         top: '20mm',    // Requerido para ver el header
+        //         bottom: '20mm', // Requerido para ver el footer
+        //         left: '10mm',
+        //         right: '10mm'
+        //     },
+        //     ...options,
+        // });
 
         return Buffer.from(bytes);
     } catch (error) {
