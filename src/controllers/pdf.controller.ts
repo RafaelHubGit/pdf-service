@@ -10,11 +10,8 @@ export const createPdf: RequestHandler = async (req, res, next) => {
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", 'inline; filename="document.pdf"');
         res.send(pdf);
-        res.json({
-            ok: true,
-            pdf: pdf
-        });
     } catch (err) {
+        console.log("ERROR : ", err)
         next(err);
     }
 };
